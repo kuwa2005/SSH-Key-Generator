@@ -22,19 +22,15 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 1100, height: 1400 },
+    viewport: { width: 1100, height: 2200 },
     deviceScaleFactor: 2,
   });
 
   await page.goto(baseURL, { waitUntil: "networkidle" });
 
-  // Force light mode (and cookie) for the hardcopy
   await page.evaluate(() => {
     document.documentElement.dataset.theme = "light";
     document.cookie = "skg-theme=light; path=/; max-age=31536000; SameSite=Lax";
-  });
-  // Sync toggle labels
-  await page.evaluate(() => {
     const btn = document.getElementById("theme-toggle");
     if (btn) {
       btn.setAttribute("aria-label", "ダークモードに切り替え");
@@ -51,39 +47,32 @@ async function main() {
   await page.waitForSelector("#output:not([hidden])");
   await page.waitForFunction(() => {
     const pub = document.getElementById("public-key")?.value || "";
-    return pub.startsWith("ssh-ed25519 ");
+    const priv = document.getElementById("private-key")?.value || "";
+    return (
+      pub.startsWith("ssh-ed25519 ") &&
+      priv.includes("BEGIN OPENSSH PRIVATE KEY")
+    );
   });
 
-  // Do not ship real private key material in documentation assets
+  // Redact private key bytes; keep the post-generate layout (both panes visible)
   await page.evaluate((text) => {
     const el = document.getElementById("private-key");
     if (el) el.value = text;
   }, REDACTED_PRIVATE);
 
-  // Main UI only (header → generated keys), not the long help sections
-  const box = await page.evaluate(() => {
-    const pageEl = document.querySelector(".page");
-    const output = document.getElementById("output");
-    if (!pageEl || !output) return null;
-    const top = pageEl.getBoundingClientRect().top + window.scrollY;
-    const bottom =
-      output.getBoundingClientRect().bottom + window.scrollY + 16;
-    const left = pageEl.getBoundingClientRect().left + window.scrollX;
-    const width = pageEl.getBoundingClientRect().width;
-    return {
-      x: Math.max(0, left - 8),
-      y: Math.max(0, top - 8),
-      width: width + 16,
-      height: bottom - top + 8,
-    };
+  // Hide long help so the shot is the main generate result only
+  await page.evaluate(() => {
+    document.querySelectorAll(".guide, .footer").forEach((el) => {
+      el.style.display = "none";
+    });
   });
 
+  await page.locator("#output .key-block.private").scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(150);
+
   const outPath = path.join(outDir, "main-light-generated.png");
-  if (!box) {
-    await page.locator(".page").screenshot({ path: outPath });
-  } else {
-    await page.screenshot({ path: outPath, clip: box });
-  }
+  await page.locator(".page").screenshot({ path: outPath });
   await browser.close();
   console.log(`wrote ${outPath}`);
 }

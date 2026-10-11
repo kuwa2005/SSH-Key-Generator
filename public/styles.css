@@ -178,6 +178,24 @@ html[data-theme="light"] .theme-toggle .bulb-filament {
   font-size: 0.95rem;
 }
 
+.tagline .repo-link {
+  margin-left: 0.55rem;
+  color: var(--accent);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 0.9em;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.tagline .repo-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+.tagline .repo-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 .controls {
   display: flex;
   flex-wrap: wrap;
