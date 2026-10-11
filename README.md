@@ -7,7 +7,7 @@
 
 ## スクリーンショット
 
-![メイン画面（ライトモード）](docs/screenshots/main-light-generated.png)
+![メイン画面（ライトモード）](docs/screenshots/main-ui-light.png)
 
 ## 機能
 
