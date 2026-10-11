@@ -12,6 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const outDir = path.join(root, "docs", "screenshots");
 const baseURL = process.env.SKG_URL || "http://127.0.0.1:8002/";
+const OUT_NAME = "main-ui-light-pass.png";
 
 const REDACTED_PRIVATE = `-----BEGIN OPENSSH PRIVATE KEY-----
 [redacted for documentation — generate your own in the app]
@@ -22,7 +23,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 1100, height: 2200 },
+    viewport: { width: 1100, height: 2600 },
     deviceScaleFactor: 2,
   });
 
@@ -41,6 +42,7 @@ async function main() {
   await page.fill("#comment", "example@example.com");
   await page.fill("#username", "example");
   await page.fill("#hostname", "example.com");
+  await page.fill("#passphrase", "example");
   await page.selectOption("#algo", "ed25519");
 
   await page.click("#generate");
@@ -54,24 +56,33 @@ async function main() {
     );
   });
 
-  // Redact private key bytes; keep the post-generate layout (both panes visible)
   await page.evaluate((text) => {
     const el = document.getElementById("private-key");
     if (el) el.value = text;
   }, REDACTED_PRIVATE);
 
-  // Hide long help so the shot is the main generate result only
   await page.evaluate(() => {
     document.querySelectorAll(".guide, .footer").forEach((el) => {
       el.style.display = "none";
     });
   });
 
-  await page.locator("#output .key-block.private").scrollIntoViewIfNeeded();
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(200);
 
-  const outPath = path.join(outDir, "main-ui-light.png");
+  // Measure content height so the shot is not clipped
+  const height = await page.evaluate(() => {
+    const pageEl = document.querySelector(".page");
+    const output = document.getElementById("output");
+    if (!pageEl || !output) return 2200;
+    const top = pageEl.getBoundingClientRect().top;
+    const bottom = output.getBoundingClientRect().bottom;
+    return Math.ceil(bottom - top + 48);
+  });
+  await page.setViewportSize({ width: 1100, height: Math.max(height + 40, 1200) });
+  await page.waitForTimeout(100);
+
+  const outPath = path.join(outDir, OUT_NAME);
   await page.locator(".page").screenshot({ path: outPath });
   await browser.close();
   console.log(`wrote ${outPath}`);

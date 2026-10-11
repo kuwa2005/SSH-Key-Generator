@@ -74,6 +74,13 @@
           </div>
         </div>
 
+        <div class="field-row">
+          <div class="field field-grow">
+            <label for="passphrase">パスフレーズ <span class="opt">(任意)</span></label>
+            <input id="passphrase" type="password" placeholder="空欄なら暗号化なし" autocomplete="new-password" spellcheck="false" />
+          </div>
+        </div>
+
         <div class="actions">
           <button type="button" id="generate" class="btn-primary">キーを生成</button>
           <button type="button" id="clear" class="btn-ghost" disabled>クリア</button>
@@ -118,9 +125,22 @@
           </div>
           <div>
             <dt>秘密鍵</dt>
-            <dd>
-              自分の PC だけに置きます。通常は <code>~/.ssh/id_ed25519</code>（または選んだアルゴリズム名）として保存し、権限を <code>chmod 600</code> に。
+            <dd data-when-pass="off">
+              自分の PC だけに置きます。通常は <code>~/.ssh/<span data-filebase>id_ed25519</span></code>（または選んだアルゴリズム名）として保存し、権限を <code>chmod 600</code> に。
               サーバーや Git ホストには<strong>絶対に上げない</strong>でください。
+            </dd>
+            <dd data-when-pass="on" hidden>
+              パスフレーズ付きで暗号化されます。自分の PC の <code>~/.ssh/<span data-filebase>id_ed25519</span></code> にだけ置き、権限は <code>chmod 600</code>。
+              使うときにパスフレーズを聞かれます（サーバーのログインパスワードとは別です）。
+              サーバーや Git ホストには<strong>絶対に上げない</strong>でください。
+            </dd>
+          </div>
+          <div data-when-pass="on" hidden>
+            <dt>パスフレーズ</dt>
+            <dd>
+              秘密鍵の解除用です。接続のたびに聞かれます。毎回の入力を避けたいときは
+              <code>ssh-add ~/.ssh/<span data-filebase>id_ed25519</span></code>
+              でエージェントに登録します（エージェント起動中だけ再入力不要）。
             </dd>
           </div>
           <div>
@@ -141,7 +161,7 @@
           <code>authorized_keys</code> へ公開鍵が追記されます（サーバー側で手編集不要）。
         </p>
 
-        <p class="guide-note" id="help-target-note">上の「ユーザー名」「ホスト名」欄を入れると、下のコマンド例の接続先が差し替わります。</p>
+        <p class="guide-note" id="help-target-note">上の「ユーザー名」「ホスト名」「パスフレーズ」欄を入れると、下の説明とコマンド例が差し替わります。</p>
 
         <ol class="cmd-list">
           <li>
@@ -168,15 +188,23 @@ mv ~/Downloads/<span data-filebase>id_ed25519</span> ~/.ssh/ &amp;&amp; mv ~/Dow
 chmod 600 ~/.ssh/<span data-filebase>id_ed25519</span> &amp;&amp; chmod 644 ~/.ssh/<span data-filebase>id_ed25519</span>.pub
 ssh-copy-id -i ~/.ssh/<span data-filebase>id_ed25519</span>.pub <span data-target>user@host</span></code></pre>
           </li>
+          <li data-when-pass="on" hidden>
+            <h3>5. パスフレーズ付き鍵をエージェントに載せる（任意）</h3>
+            <p>接続のたびのパスフレーズ入力を減らしたいとき:</p>
+            <pre class="cmd"><code>eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/<span data-filebase>id_ed25519</span></code></pre>
+            <p>ここでパスフレーズを一度入力すると、エージェント稼働中は省略できます。</p>
+          </li>
           <li>
-            <h3>5. ポート番号が 22 以外のとき</h3>
+            <h3><span data-when-pass="off">5</span><span data-when-pass="on" hidden>6</span>. ポート番号が 22 以外のとき</h3>
             <pre class="cmd"><code>ssh-copy-id -i ~/Downloads/<span data-filebase>id_ed25519</span>.pub -p 2222 <span data-target>user@host</span></code></pre>
             <pre class="cmd"><code>cat ~/Downloads/<span data-filebase>id_ed25519</span>.pub | ssh -p 2222 <span data-target>user@host</span> 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></pre>
           </li>
           <li>
-            <h3>6. 登録できたか確認</h3>
+            <h3><span data-when-pass="off">6</span><span data-when-pass="on" hidden>7</span>. 登録できたか確認</h3>
             <pre class="cmd"><code>ssh -i ~/.ssh/<span data-filebase>id_ed25519</span> <span data-target>user@host</span></code></pre>
-            <p>パスワードを聞かれずに入れれば成功です。</p>
+            <p data-when-pass="off">ログイン用パスワードを聞かれずに入れれば成功です。</p>
+            <p data-when-pass="on" hidden>秘密鍵のパスフレーズを聞かれたあと（または <code>ssh-add</code> 済みならそのまま）入れれば成功です。サーバーのログインパスワードを聞かれる場合は公開鍵側の登録を見直してください。</p>
           </li>
         </ol>
       </section>
@@ -199,9 +227,15 @@ chmod 700 ~/.ssh</code></pre>
             <h3>2. 秘密鍵を置く（まだなら）</h3>
             <pre class="cmd"><code>mv ~/Downloads/<span data-filebase>id_ed25519</span> ~/.ssh/
 chmod 600 ~/.ssh/<span data-filebase>id_ed25519</span></code></pre>
+            <p data-when-pass="on" hidden>パスフレーズ付きの秘密鍵です。置き場所と権限は同じです。</p>
+          </li>
+          <li data-when-pass="on" hidden>
+            <h3>3. エージェントに載せる（任意）</h3>
+            <pre class="cmd"><code>eval "$(ssh-agent -s)"
+ssh-add ~/.ssh/<span data-filebase>id_ed25519</span></code></pre>
           </li>
           <li>
-            <h3>3. 設定ファイル <code>~/.ssh/config</code> を作る / 追記する</h3>
+            <h3><span data-when-pass="off">3</span><span data-when-pass="on" hidden>4</span>. 設定ファイル <code>~/.ssh/config</code> を作る / 追記する</h3>
             <p>新規作成の例（エディタでも可）:</p>
             <pre class="cmd"><code id="config-snippet">cat &gt;&gt; ~/.ssh/config &lt;&lt;'EOF'
 Host myserver
@@ -220,15 +254,17 @@ chmod 600 ~/.ssh/config</code></pre>
               <li><code>Port</code> … ポート（22 なら省略可）</li>
               <li><code>IdentityFile</code> … このページで作った秘密鍵のパス</li>
               <li><code>IdentitiesOnly yes</code> … 指定鍵だけ使う</li>
+              <li data-when-pass="on" hidden><code>AddKeysToAgent yes</code> … 初回パスフレーズ入力後、エージェントに載せられる（任意）</li>
             </ul>
           </li>
           <li>
-            <h3>4. 接続</h3>
+            <h3><span data-when-pass="off">4</span><span data-when-pass="on" hidden>5</span>. 接続</h3>
             <pre class="cmd"><code>ssh <span data-alias>myserver</span></code></pre>
-            <p>公開鍵を相手側へ登録済みなら、これだけで入れます。</p>
+            <p data-when-pass="off">公開鍵を相手側へ登録済みなら、これだけで入れます。</p>
+            <p data-when-pass="on" hidden>公開鍵を相手側へ登録済みなら接続できます。初回（またはエージェント未登録時）は秘密鍵のパスフレーズを聞かれます。</p>
           </li>
           <li>
-            <h3>5. どの設定が効くか確認</h3>
+            <h3><span data-when-pass="off">5</span><span data-when-pass="on" hidden>6</span>. どの設定が効くか確認</h3>
             <pre class="cmd"><code>ssh -G <span data-alias>myserver</span> | rg -i '^(hostname|user|port|identityfile) '</code></pre>
             <p><code>rg</code> が無ければ <code>grep -E</code> に置き換えてください。</p>
           </li>

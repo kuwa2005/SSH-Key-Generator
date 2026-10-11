@@ -3,7 +3,10 @@
  * Outputs OpenSSH public + private key formats. Nothing is sent to a server.
  */
 
+import bcryptPbkdfMod from "./lib/bcrypt-pbkdf.js";
+
 const enc = new TextEncoder();
+const bcryptPbkdf = bcryptPbkdfMod.pbkdf || bcryptPbkdfMod.default?.pbkdf || bcryptPbkdfMod;
 
 const ALGO_OPTIONS = {
   ed25519: {
@@ -39,6 +42,7 @@ const algoEl = document.getElementById("algo");
 const bitsEl = document.getElementById("bits");
 const bitsField = document.getElementById("bits-field");
 const commentEl = document.getElementById("comment");
+const passphraseEl = document.getElementById("passphrase");
 const usernameEl = document.getElementById("username");
 const hostnameEl = document.getElementById("hostname");
 const generateBtn = document.getElementById("generate");
@@ -91,14 +95,18 @@ function currentAlias() {
   return short.replace(/[^A-Za-z0-9_-]/g, "-") || "myserver";
 }
 
+function hasPassphrase() {
+  return !!(passphraseEl?.value || "");
+}
+
 function refreshHelpCommands() {
   const fileBase = currentFileBase();
   const target = currentTarget();
   const alias = currentAlias();
-  const user = (usernameEl.value || "").trim() || currentUser();
   const hostName = (hostnameEl.value || "").trim()
     ? currentHostName()
     : "example.invalid";
+  const withPass = hasPassphrase();
 
   document.querySelectorAll("[data-filebase]").forEach((el) => {
     el.textContent = fileBase;
@@ -110,23 +118,38 @@ function refreshHelpCommands() {
     el.textContent = alias;
   });
 
+  document.querySelectorAll("[data-when-pass]").forEach((el) => {
+    const want = el.getAttribute("data-when-pass") === "on";
+    el.hidden = want !== withPass;
+  });
+
   if (helpNoteEl) {
+    const parts = [];
+    if ((usernameEl.value || "").trim() || (hostnameEl.value || "").trim()) {
+      parts.push(`接続先「${target}」`);
+    }
+    parts.push(`鍵ファイル「${fileBase}」`);
+    if (withPass) parts.push("パスフレーズ付き");
     const filled =
-      !!(usernameEl.value || "").trim() || !!(hostnameEl.value || "").trim();
+      !!(usernameEl.value || "").trim() ||
+      !!(hostnameEl.value || "").trim() ||
+      withPass;
     helpNoteEl.textContent = filled
-      ? `接続先は「${target}」、鍵ファイル名は「${fileBase}」で表示しています。`
-      : "上の「ユーザー名」「ホスト名」欄を入れると、下のコマンド例の接続先が差し替わります。";
+      ? `${parts.join("、")} で表示しています。`
+      : "上の「ユーザー名」「ホスト名」「パスフレーズ」欄を入れると、下の説明とコマンド例が差し替わります。";
   }
 
   if (configSnippetEl) {
     const configUser = (usernameEl.value || "").trim() || "yourname";
+    const passLines = withPass
+      ? `\n  AddKeysToAgent yes\n  IdentitiesOnly yes`
+      : `\n  IdentitiesOnly yes`;
     configSnippetEl.textContent = `cat >> ~/.ssh/config <<'EOF'
 Host ${alias}
   HostName ${hostName}
   User ${configUser}
   Port 22
-  IdentityFile ~/.ssh/${fileBase}
-  IdentitiesOnly yes
+  IdentityFile ~/.ssh/${fileBase}${passLines}
 EOF
 chmod 600 ~/.ssh/config`;
   }
@@ -200,23 +223,83 @@ function randomCheckInt() {
   return new DataView(b.buffer).getUint32(0);
 }
 
-function buildOpenSshPrivate(publicBlob, privateInner) {
+function padPrivateBlob(priv, blockSize) {
+  const padLen = (blockSize - (priv.length % blockSize)) % blockSize;
+  if (!padLen) return priv;
+  const pad = new Uint8Array(padLen);
+  for (let i = 0; i < padLen; i++) pad[i] = i + 1;
+  return concat(priv, pad);
+}
+
+async function encryptOpenSshPrivate(plainPriv, passphrase) {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  const rounds = 16;
+  const passBytes = enc.encode(passphrase);
+  const derived = new Uint8Array(48); // 32-byte key + 16-byte IV
+  const rc = bcryptPbkdf(
+    passBytes,
+    passBytes.length,
+    salt,
+    salt.length,
+    derived,
+    derived.length,
+    rounds
+  );
+  if (rc !== 0) throw new Error("パスフレーズ由来鍵の生成に失敗しました");
+
+  const keyBytes = derived.subarray(0, 32);
+  const iv = derived.subarray(32, 48);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyBytes,
+    { name: "AES-CTR" },
+    false,
+    ["encrypt"]
+  );
+  const encrypted = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-CTR", counter: iv, length: 128 },
+      cryptoKey,
+      plainPriv
+    )
+  );
+
+  const kdfOptions = concat(sshString(salt), u32(rounds));
+  return {
+    cipherName: "aes256-ctr",
+    kdfName: "bcrypt",
+    kdfOptions,
+    payload: encrypted,
+  };
+}
+
+async function buildOpenSshPrivate(publicBlob, privateInner, passphrase = "") {
   const check = randomCheckInt();
   const checkBytes = u32(check);
   let priv = concat(checkBytes, checkBytes, privateInner);
-  // Pad to block size 8 with 1..n
-  const padLen = (8 - (priv.length % 8)) % 8;
-  if (padLen) {
-    const pad = new Uint8Array(padLen);
-    for (let i = 0; i < padLen; i++) pad[i] = i + 1;
-    priv = concat(priv, pad);
+  const pass = (passphrase || "").normalize("NFC");
+
+  let cipherName = "none";
+  let kdfName = "none";
+  let kdfOptions = new Uint8Array(0);
+
+  if (pass) {
+    priv = padPrivateBlob(priv, 16);
+    const encResult = await encryptOpenSshPrivate(priv, pass);
+    cipherName = encResult.cipherName;
+    kdfName = encResult.kdfName;
+    kdfOptions = encResult.kdfOptions;
+    priv = encResult.payload;
+  } else {
+    priv = padPrivateBlob(priv, 8);
   }
 
   const body = concat(
     enc.encode("openssh-key-v1\0"),
-    sshString("none"),
-    sshString("none"),
-    sshString(new Uint8Array(0)),
+    sshString(cipherName),
+    sshString(kdfName),
+    sshString(kdfOptions),
     u32(1),
     sshString(publicBlob),
     sshString(priv)
@@ -229,7 +312,7 @@ function publicLine(algName, publicBlob, comment) {
   return `${algName} ${b64(publicBlob)}${c ? ` ${c}` : ""}`;
 }
 
-async function generateEd25519(comment) {
+async function generateEd25519(comment, passphrase) {
   const pair = await crypto.subtle.generateKey({ name: "Ed25519" }, true, [
     "sign",
     "verify",
@@ -249,12 +332,12 @@ async function generateEd25519(comment) {
   );
   return {
     publicKey: publicLine("ssh-ed25519", pubBlob, comment),
-    privateKey: buildOpenSshPrivate(pubBlob, privInner),
+    privateKey: await buildOpenSshPrivate(pubBlob, privInner, passphrase),
     fileBase: "id_ed25519",
   };
 }
 
-async function generateRsa(bits, comment) {
+async function generateRsa(bits, comment, passphrase) {
   const pair = await crypto.subtle.generateKey(
     {
       name: "RSASSA-PKCS1-v1_5",
@@ -285,7 +368,7 @@ async function generateRsa(bits, comment) {
   );
   return {
     publicKey: publicLine("ssh-rsa", pubBlob, comment),
-    privateKey: buildOpenSshPrivate(pubBlob, privInner),
+    privateKey: await buildOpenSshPrivate(pubBlob, privInner, passphrase),
     fileBase: "id_rsa",
   };
 }
@@ -294,7 +377,7 @@ function uncompressedPoint(x, y) {
   return concat(new Uint8Array([0x04]), x, y);
 }
 
-async function generateEcdsa(bits, comment) {
+async function generateEcdsa(bits, comment, passphrase) {
   const meta = ALGO_OPTIONS.ecdsa;
   const namedCurve = meta.curveMap[bits];
   const sshCurve = meta.sshCurve[bits];
@@ -319,7 +402,7 @@ async function generateEcdsa(bits, comment) {
   );
   return {
     publicKey: publicLine(keyType, pubBlob, comment),
-    privateKey: buildOpenSshPrivate(pubBlob, privInner),
+    privateKey: await buildOpenSshPrivate(pubBlob, privInner, passphrase),
     fileBase: "id_ecdsa",
   };
 }
@@ -377,6 +460,7 @@ function clearKeys() {
 async function onGenerate() {
   const algo = algoEl.value;
   const comment = commentEl.value.trim() || "ssh-key-generator";
+  const passphrase = passphraseEl.value;
   generateBtn.disabled = true;
   setStatus("生成中…");
   try {
@@ -385,14 +469,14 @@ async function onGenerate() {
       if (!crypto.subtle || typeof crypto.subtle.generateKey !== "function") {
         throw new Error("このブラウザは Web Crypto に対応していません");
       }
-      result = await generateEd25519(comment);
+      result = await generateEd25519(comment, passphrase);
     } else if (algo === "rsa") {
       const bits = Number(bitsEl.value);
       setStatus(`RSA ${bits} bit を生成中…（少し時間がかかることがあります）`);
-      result = await generateRsa(bits, comment);
+      result = await generateRsa(bits, comment, passphrase);
     } else if (algo === "ecdsa") {
       const bits = Number(bitsEl.value);
-      result = await generateEcdsa(bits, comment);
+      result = await generateEcdsa(bits, comment, passphrase);
     } else {
       throw new Error("未対応のアルゴリズムです");
     }
@@ -406,7 +490,12 @@ async function onGenerate() {
     outputEl.hidden = false;
     outputEl.dataset.reveal = "1";
     clearBtn.disabled = false;
-    setStatus("生成完了。このタブを閉じると表示は消えます。", "ok");
+    setStatus(
+      passphrase
+        ? "生成完了（パスフレーズ付き）。このタブを閉じると表示は消えます。"
+        : "生成完了。このタブを閉じると表示は消えます。",
+      "ok"
+    );
   } catch (err) {
     console.error(err);
     const msg =
@@ -488,6 +577,7 @@ algoEl.addEventListener("change", updateBitsOptions);
 usernameEl.addEventListener("input", refreshHelpCommands);
 hostnameEl.addEventListener("input", refreshHelpCommands);
 commentEl.addEventListener("input", refreshHelpCommands);
+passphraseEl?.addEventListener("input", refreshHelpCommands);
 
 initTheme();
 updateBitsOptions();
