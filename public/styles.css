@@ -172,26 +172,36 @@ html[data-theme="light"] .theme-toggle .bulb-filament {
   letter-spacing: -0.02em;
 }
 
+.tagline-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.55rem;
+}
+
 .tagline {
-  margin: 0.55rem 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.95rem;
 }
 
-.tagline .repo-link {
-  margin-left: 0.55rem;
+.repo-link {
+  flex: 0 0 auto;
+  margin-left: auto;
   color: var(--accent);
   text-decoration: none;
   font-family: var(--mono);
-  font-size: 0.9em;
+  font-size: 0.9rem;
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  white-space: nowrap;
 }
 
-.tagline .repo-link:hover {
+.repo-link:hover {
   border-bottom-color: var(--accent);
 }
 
-.tagline .repo-link:focus-visible {
+.repo-link:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
