@@ -12,9 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const outDir = path.join(root, "docs", "screenshots");
 const baseURL = process.env.SKG_URL || "http://127.0.0.1:8002/";
-const OUT_NAME = "main-ui-light.png";
-const PAD_X = 32;
-const PAD_Y = 24;
+const OUT_NAME = "main-ui.png";
+const PAD = 40;
 
 const REDACTED_PRIVATE = `-----BEGIN OPENSSH PRIVATE KEY-----
 [redacted for documentation — generate your own in the app]
@@ -25,7 +24,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 1200, height: 2600 },
+    viewport: { width: 1280, height: 2800 },
     deviceScaleFactor: 2,
   });
 
@@ -63,42 +62,42 @@ async function main() {
     if (el) el.value = text;
   }, REDACTED_PRIVATE);
 
-  await page.evaluate(() => {
+  await page.evaluate((pad) => {
     document.querySelectorAll(".guide, .footer").forEach((el) => {
       el.style.display = "none";
     });
-  });
+
+    const pageEl = document.querySelector(".page");
+    const wrap = document.createElement("div");
+    wrap.id = "shot-wrap";
+    const bg = getComputedStyle(document.body).background;
+    wrap.style.cssText = [
+      `padding:${pad}px`,
+      "display:block",
+      "box-sizing:border-box",
+      `background:${bg}`,
+      "width:fit-content",
+      "margin:0 auto",
+    ].join(";");
+    pageEl.parentNode.insertBefore(wrap, pageEl);
+    wrap.appendChild(pageEl);
+    pageEl.style.width = "920px";
+    pageEl.style.maxWidth = "920px";
+    pageEl.style.margin = "0";
+  }, PAD);
 
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(200);
 
-  const box = await page.locator(".page").boundingBox();
-  if (!box) throw new Error(".page not found");
-
-  const clip = {
-    x: Math.max(0, box.x - PAD_X),
-    y: Math.max(0, box.y - PAD_Y),
-    width: box.width + PAD_X * 2,
-    height: box.height + PAD_Y * 2,
-  };
-
+  const box = await page.locator("#shot-wrap").boundingBox();
   await page.setViewportSize({
-    width: Math.ceil(clip.x + clip.width + 16),
-    height: Math.ceil(clip.y + clip.height + 16),
+    width: Math.ceil((box?.x || 0) + (box?.width || 1000) + 24),
+    height: Math.ceil((box?.y || 0) + (box?.height || 2000) + 24),
   });
-  await page.waitForTimeout(100);
-
-  // Re-measure after viewport change (centering may shift)
-  const box2 = await page.locator(".page").boundingBox();
-  const clip2 = {
-    x: Math.max(0, box2.x - PAD_X),
-    y: Math.max(0, box2.y - PAD_Y),
-    width: box2.width + PAD_X * 2,
-    height: box2.height + PAD_Y * 2,
-  };
+  await page.waitForTimeout(150);
 
   const outPath = path.join(outDir, OUT_NAME);
-  await page.screenshot({ path: outPath, clip: clip2 });
+  await page.locator("#shot-wrap").screenshot({ path: outPath });
   await browser.close();
   console.log(`wrote ${outPath}`);
 }
