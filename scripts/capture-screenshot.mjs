@@ -71,7 +71,7 @@ async function main() {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(150);
 
-  const outPath = path.join(outDir, "main-light-generated.png");
+  const outPath = path.join(outDir, "main-ui-light.png");
   await page.locator(".page").screenshot({ path: outPath });
   await browser.close();
   console.log(`wrote ${outPath}`);
