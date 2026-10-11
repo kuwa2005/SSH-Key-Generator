@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SSH Key Generator</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script>
+    (function () {
+      var m = document.cookie.match(/(?:^|;\s*)skg-theme=(dark|light)/);
+      document.documentElement.setAttribute("data-theme", m ? m[1] : "dark");
+    })();
+  </script>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="brand-row">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">⌘</span>
+          <h1>SSH Key Generator</h1>
+        </div>
+        <button
+          type="button"
+          id="theme-toggle"
+          class="theme-toggle"
+          aria-label="ライトモードに切り替え"
+          title="テーマ切替"
+        >
+          <svg class="bulb" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path class="bulb-glow" d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/>
+            <path class="bulb-base" d="M9 18h6v1a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1z"/>
+            <path class="bulb-filament" d="M10.5 14.5c.6-1 1.1-1.4 1.5-1.4s.9.4 1.5 1.4"/>
+          </svg>
+        </button>
+      </div>
+      <p class="tagline">ブラウザ内だけで生成。サーバーには送りません。</p>
+    </header>
+
+    <main class="main">
+      <section class="controls" aria-label="鍵の設定">
+        <div class="field">
+          <label for="algo">アルゴリズム</label>
+          <select id="algo">
+            <option value="ed25519" selected>Ed25519（推奨）</option>
+            <option value="rsa">RSA</option>
+            <option value="ecdsa">ECDSA</option>
+          </select>
+        </div>
+
+        <div class="field" id="bits-field">
+          <label for="bits">鍵長</label>
+          <select id="bits">
+            <option value="256">—</option>
+          </select>
+        </div>
+
+        <div class="field field-grow">
+          <label for="comment">コメント</label>
+          <input id="comment" type="text" placeholder="user@host" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="username">ユーザー名 <span class="opt">(任意)</span></label>
+            <input id="username" type="text" placeholder="例: alice" autocomplete="username" spellcheck="false" />
+          </div>
+          <div class="field field-grow">
+            <label for="hostname">ホスト名 <span class="opt">(任意)</span></label>
+            <input id="hostname" type="text" placeholder="例: myserver / 192.168.1.10" autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="generate" class="btn-primary">キーを生成</button>
+          <button type="button" id="clear" class="btn-ghost" disabled>クリア</button>
+        </div>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+
+      <section class="output" id="output" hidden>
+        <article class="key-block">
+          <div class="key-head">
+            <h2>公開鍵 <span class="fname" id="pub-name">id_ed25519.pub</span></h2>
+            <div class="key-actions">
+              <button type="button" id="copy-pub" class="btn-small">コピー</button>
+              <button type="button" id="dl-pub" class="btn-small">ダウンロード</button>
+            </div>
+          </div>
+          <textarea id="public-key" readonly rows="3" spellcheck="false"></textarea>
+        </article>
+
+        <article class="key-block private">
+          <div class="key-head">
+            <h2>秘密鍵 <span class="fname" id="priv-name">id_ed25519</span></h2>
+            <div class="key-actions">
+              <button type="button" id="copy-priv" class="btn-small">コピー</button>
+              <button type="button" id="dl-priv" class="btn-small">ダウンロード</button>
+            </div>
+          </div>
+          <textarea id="private-key" readonly rows="12" spellcheck="false"></textarea>
+        </article>
+      </section>
+
+      <section class="guide" aria-labelledby="guide-title">
+        <h2 id="guide-title">どこに登録するか</h2>
+        <dl class="guide-list">
+          <div>
+            <dt>公開鍵（.pub）</dt>
+            <dd>
+              接続先サーバーの <code>~/.ssh/authorized_keys</code> に1行追記します。
+              GitHub / GitLab / Bitbucket なら「SSH keys」設定画面へ貼り付け。
+            </dd>
+          </div>
+          <div>
+            <dt>秘密鍵</dt>
+            <dd>
+              自分の PC だけに置きます。通常は <code>~/.ssh/id_ed25519</code>（または選んだアルゴリズム名）として保存し、権限を <code>chmod 600</code> に。
+              サーバーや Git ホストには<strong>絶対に上げない</strong>でください。
+            </dd>
+          </div>
+          <div>
+            <dt>このページについて</dt>
+            <dd>
+              鍵はすべてブラウザ内（Web Crypto）で生成され、どこにも保存されません。
+              タブを閉じると消えます。使い終わったらダウンロード済みファイルだけ残してください。
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="guide register" aria-labelledby="register-title">
+        <h2 id="register-title">公開鍵をリモートへ一発登録</h2>
+        <p class="guide-lead">
+          相手サーバーへは最初だけパスワードで SSH ログインできれば十分です。
+          登録元の PC から次のいずれかを実行すると、対話でパスワードを聞かれたあと
+          <code>authorized_keys</code> へ公開鍵が追記されます（サーバー側で手編集不要）。
+        </p>
+
+        <p class="guide-note" id="help-target-note">上の「ユーザー名」「ホスト名」欄を入れると、下のコマンド例の接続先が差し替わります。</p>
+
+        <ol class="cmd-list">
+          <li>
+            <h3>1. いちばん簡単 — <code>ssh-copy-id</code></h3>
+            <p>デフォルト鍵（例: <code>~/.ssh/<span data-filebase>id_ed25519</span>.pub</code>）を送る場合:</p>
+            <pre class="cmd"><code>ssh-copy-id <span data-target>user@host</span></code></pre>
+            <p>このページでダウンロードした公開鍵を指定する場合:</p>
+            <pre class="cmd"><code>ssh-copy-id -i ~/Downloads/<span data-filebase>id_ed25519</span>.pub <span data-target>user@host</span></code></pre>
+          </li>
+          <li>
+            <h3>2. <code>ssh-copy-id</code> が無いとき — <code>cat | ssh</code></h3>
+            <pre class="cmd"><code>cat ~/Downloads/<span data-filebase>id_ed25519</span>.pub | ssh <span data-target>user@host</span> 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></pre>
+          </li>
+          <li>
+            <h3>3. クリップボードの公開鍵をそのまま送る</h3>
+            <p>ページで「コピー」したあと（Linux / Wayland 例）:</p>
+            <pre class="cmd"><code>wl-paste | ssh <span data-target>user@host</span> 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></pre>
+            <p>X11 なら <code>xclip -selection clipboard -o</code>、macOS なら <code>pbpaste</code> に置き換え。</p>
+          </li>
+          <li>
+            <h3>4. 秘密鍵もまとめて手元へ置く → 登録</h3>
+            <pre class="cmd"><code>mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh
+mv ~/Downloads/<span data-filebase>id_ed25519</span> ~/.ssh/ &amp;&amp; mv ~/Downloads/<span data-filebase>id_ed25519</span>.pub ~/.ssh/
+chmod 600 ~/.ssh/<span data-filebase>id_ed25519</span> &amp;&amp; chmod 644 ~/.ssh/<span data-filebase>id_ed25519</span>.pub
+ssh-copy-id -i ~/.ssh/<span data-filebase>id_ed25519</span>.pub <span data-target>user@host</span></code></pre>
+          </li>
+          <li>
+            <h3>5. ポート番号が 22 以外のとき</h3>
+            <pre class="cmd"><code>ssh-copy-id -i ~/Downloads/<span data-filebase>id_ed25519</span>.pub -p 2222 <span data-target>user@host</span></code></pre>
+            <pre class="cmd"><code>cat ~/Downloads/<span data-filebase>id_ed25519</span>.pub | ssh -p 2222 <span data-target>user@host</span> 'mkdir -p ~/.ssh &amp;&amp; chmod 700 ~/.ssh &amp;&amp; cat &gt;&gt; ~/.ssh/authorized_keys &amp;&amp; chmod 600 ~/.ssh/authorized_keys'</code></pre>
+          </li>
+          <li>
+            <h3>6. 登録できたか確認</h3>
+            <pre class="cmd"><code>ssh -i ~/.ssh/<span data-filebase>id_ed25519</span> <span data-target>user@host</span></code></pre>
+            <p>パスワードを聞かれずに入れれば成功です。</p>
+          </li>
+        </ol>
+      </section>
+
+      <section class="guide config" aria-labelledby="config-title">
+        <h2 id="config-title"><code>ssh</code> 短い名前だけで繋ぐ（接続元の設定）</h2>
+        <p class="guide-lead">
+          接続元 PC の <code>~/.ssh/config</code> にホスト別名を書いておくと、
+          長いオプションの代わりに短い名前だけで入れます。
+          秘密鍵・ユーザー名・ポート・実ホスト名をここに集約します。
+        </p>
+
+        <ol class="cmd-list">
+          <li>
+            <h3>1. ディレクトリと権限</h3>
+            <pre class="cmd"><code>mkdir -p ~/.ssh
+chmod 700 ~/.ssh</code></pre>
+          </li>
+          <li>
+            <h3>2. 秘密鍵を置く（まだなら）</h3>
+            <pre class="cmd"><code>mv ~/Downloads/<span data-filebase>id_ed25519</span> ~/.ssh/
+chmod 600 ~/.ssh/<span data-filebase>id_ed25519</span></code></pre>
+          </li>
+          <li>
+            <h3>3. 設定ファイル <code>~/.ssh/config</code> を作る / 追記する</h3>
+            <p>新規作成の例（エディタでも可）:</p>
+            <pre class="cmd"><code id="config-snippet">cat &gt;&gt; ~/.ssh/config &lt;&lt;'EOF'
+Host myserver
+  HostName example.invalid
+  User yourname
+  Port 22
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config</code></pre>
+            <p>各行の意味:</p>
+            <ul class="field-note">
+              <li><code>Host</code> … 打ち込む短い名前</li>
+              <li><code>HostName</code> … 実際の IP または FQDN</li>
+              <li><code>User</code> … ログインユーザー</li>
+              <li><code>Port</code> … ポート（22 なら省略可）</li>
+              <li><code>IdentityFile</code> … このページで作った秘密鍵のパス</li>
+              <li><code>IdentitiesOnly yes</code> … 指定鍵だけ使う</li>
+            </ul>
+          </li>
+          <li>
+            <h3>4. 接続</h3>
+            <pre class="cmd"><code>ssh <span data-alias>myserver</span></code></pre>
+            <p>公開鍵を相手側へ登録済みなら、これだけで入れます。</p>
+          </li>
+          <li>
+            <h3>5. どの設定が効くか確認</h3>
+            <pre class="cmd"><code>ssh -G <span data-alias>myserver</span> | rg -i '^(hostname|user|port|identityfile) '</code></pre>
+            <p><code>rg</code> が無ければ <code>grep -E</code> に置き換えてください。</p>
+          </li>
+        </ol>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <span>client-side only · no persistence</span>
+    </footer>
+  </div>
+  <script src="app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519
+id_ecdsa
+deploy.sh
+public/setup.php
+node_modules/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+*.log
+.DS_Store

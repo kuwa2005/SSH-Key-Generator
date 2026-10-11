@@ -1,0 +1,11 @@
+{
+  "name": "ssh-key-generator",
+  "private": true,
+  "description": "Client-side SSH key generator (static site)",
+  "scripts": {
+    "capture": "node scripts/capture-screenshot.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.55.0"
+  }
+}
