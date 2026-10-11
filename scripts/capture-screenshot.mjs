@@ -12,7 +12,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const outDir = path.join(root, "docs", "screenshots");
 const baseURL = process.env.SKG_URL || "http://127.0.0.1:8002/";
-const OUT_NAME = "main-ui-light-pass.png";
+const OUT_NAME = "main-ui-light.png";
+const PAD_X = 32;
+const PAD_Y = 24;
 
 const REDACTED_PRIVATE = `-----BEGIN OPENSSH PRIVATE KEY-----
 [redacted for documentation — generate your own in the app]
@@ -23,7 +25,7 @@ async function main() {
   await mkdir(outDir, { recursive: true });
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
-    viewport: { width: 1100, height: 2600 },
+    viewport: { width: 1200, height: 2600 },
     deviceScaleFactor: 2,
   });
 
@@ -70,20 +72,33 @@ async function main() {
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(200);
 
-  // Measure content height so the shot is not clipped
-  const height = await page.evaluate(() => {
-    const pageEl = document.querySelector(".page");
-    const output = document.getElementById("output");
-    if (!pageEl || !output) return 2200;
-    const top = pageEl.getBoundingClientRect().top;
-    const bottom = output.getBoundingClientRect().bottom;
-    return Math.ceil(bottom - top + 48);
+  const box = await page.locator(".page").boundingBox();
+  if (!box) throw new Error(".page not found");
+
+  const clip = {
+    x: Math.max(0, box.x - PAD_X),
+    y: Math.max(0, box.y - PAD_Y),
+    width: box.width + PAD_X * 2,
+    height: box.height + PAD_Y * 2,
+  };
+
+  await page.setViewportSize({
+    width: Math.ceil(clip.x + clip.width + 16),
+    height: Math.ceil(clip.y + clip.height + 16),
   });
-  await page.setViewportSize({ width: 1100, height: Math.max(height + 40, 1200) });
   await page.waitForTimeout(100);
 
+  // Re-measure after viewport change (centering may shift)
+  const box2 = await page.locator(".page").boundingBox();
+  const clip2 = {
+    x: Math.max(0, box2.x - PAD_X),
+    y: Math.max(0, box2.y - PAD_Y),
+    width: box2.width + PAD_X * 2,
+    height: box2.height + PAD_Y * 2,
+  };
+
   const outPath = path.join(outDir, OUT_NAME);
-  await page.locator(".page").screenshot({ path: outPath });
+  await page.screenshot({ path: outPath, clip: clip2 });
   await browser.close();
   console.log(`wrote ${outPath}`);
 }
